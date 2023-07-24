@@ -6,7 +6,7 @@ train_args:
   subjects:
   - 12
   activities: # [ treadmill_slope_walk, treadmill_walk, treadmill_run, treadmill_walknrun, indoor_..., outdoor_...] + all
-  - outdoor_walknrun
+  - outdoor_walk
   split_walk_run: true
 
   events:
@@ -19,7 +19,7 @@ train_args:
   filter: median
   filter_window: 3
 
-  train_test_split: start # start, middle, end, loso, stratified
+  train_test_split: middle # start, middle, end, loso, stratified
   test_size: 30 # %
   train_val_split: random # start, middle, end, loso, stratified
   val_size: 33 # %

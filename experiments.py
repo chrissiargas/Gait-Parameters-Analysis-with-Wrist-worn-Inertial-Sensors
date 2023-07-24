@@ -5,7 +5,13 @@ from model import train_evaluate
 import ruamel.yaml
 import os
 import time
-from keras import backend as K
+import gc
+
+
+def reset_tensorflow_keras_backend():
+    import tensorflow as tf
+    tf.keras.backend.clear_session()
+    _ = gc.collect()
 
 
 def config_edit(args, parameter, value):
@@ -99,9 +105,10 @@ def Tan(archive_path):
             for sub in subs:
                 for act in acts:
                     for event in events:
+                        reset_tensorflow_keras_backend()
                         results_per_x = Tan_experiment(sub, act, event)
                         results = pd.concat([results, pd.DataFrame([results_per_x])], ignore_index=True)
                         save(archive, results,
                              hparams='split-' + cross_val + '-enviroment-' + env)
-                        K.clear_session()
+
 
