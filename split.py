@@ -15,7 +15,7 @@ def split_train_test(x, method, test_fraq):
     elif method == 'middle':
         train_1, train_2 = x.iloc[:train_size//2, :], x.iloc[-train_size//2:, :]
         train = pd.concat([train_1, train_2])
-        test = x.ilox[train_size//2: -train_size//2, :]
+        test = x.iloc[train_size//2: -train_size//2, :]
 
     elif method == 'end':
         train, test = x.iloc[test_size:, :], x.iloc[:test_size, :]
