@@ -1,3 +1,5 @@
+import numpy as np
+
 from configParser import Parser
 from operator import itemgetter
 from augment import *
@@ -8,6 +10,7 @@ class binary:
         self.args = Parser()
         self.args.get_args()
         self.n_events = len(self.args.events)
+        self.length = self.args.length if self.args.target == 'full' else 1
 
         if self.args.dataset == 'MAREA':
 
@@ -27,22 +30,22 @@ class binary:
 
     def __call__(self, events, time_info=False):
 
-        output = events[self.event_indices]
+        output = events[:, self.event_indices]
 
         if self.args.class_mode == 'multi_class':
-            no_event = 0 if np.sum(output) == 0 else 1
-            output = np.hstack((no_event, output))
+            no_event = np.where(np.sum(output, axis=1) == 0, 1, 0)
+            output = np.concatenate((no_event, output[:, np.newaxis]), axis=0)
 
         if time_info:
-            return output, events[-3:]
+            return output, events[:, -3:]
         else:
             return output, None
 
     def get_shape(self):
         if self.args.class_mode == 'multi_class':
-            return self.n_events + 1
+            return self.length, self.n_events + 1
         elif self.args.class_mode == 'multi_label':
-            return self.n_events
+            return self.length, self.n_events
 
 
 class temporal:
@@ -102,6 +105,9 @@ class temporal:
 
         self.pos_indices = itemgetter(*self.args.positions)(self.pos_dict)
         self.n_positions = len(self.args.positions)
+        if self.n_positions == 1:
+            self.pos_indices = [self.pos_indices]
+
         self.n_signals = len(self.args.signals)
         self.channels = self.n_signals * self.n_positions
 
@@ -136,25 +142,25 @@ class temporal:
                 elif aug == 'Rotation':
                     raws = np.array([DA_Rotation(raw) for raw in raws])
 
-        for thisSignal in self.args.signals:
-            if thisSignal in self.initial_signals:
-                s_i = self.initial_signals[thisSignal]
+        for this_signal in self.args.signals:
+            if this_signal in self.initial_signals:
+                s_i = self.initial_signals[this_signal]
                 signal = raws[:, :, s_i]
 
             else:
-                if thisSignal == 'Acc':
+                if this_signal == 'Acc':
                     signal = np.sqrt(np.sum(raws ** 2, axis=2))
 
-                elif thisSignal == 'Acc_xy':
+                elif this_signal == 'Acc_xy':
                     signal = np.sqrt(np.sum(raws[:, :, :2] ** 2, axis=2))
 
-                elif thisSignal == 'Acc_xz':
+                elif this_signal == 'Acc_xz':
                     signal = np.sqrt(np.sum(raws[:, :, ::2] ** 2, axis=2))
 
-                elif thisSignal == 'Acc_yz':
+                elif this_signal == 'Acc_yz':
                     signal = np.sqrt(np.sum(raws[:, :, 1:] ** 2, axis=2))
 
-                elif thisSignal == 'Jerk':
+                elif this_signal == 'Jerk':
                     J = np.array([np.array([(raw[1:, orientation] - raw[:-1, orientation]) * self.args.sampling_rate
                                   for orientation in range(3)]).transpose() for raw in raws])
                     signal = np.sqrt(np.sum(J ** 2, axis=2))

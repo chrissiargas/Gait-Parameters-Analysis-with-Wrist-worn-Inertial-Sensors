@@ -6,9 +6,59 @@ import pandas as pd
 from transformers import temporal, binary
 import tensorflow as tf
 from preprocessing import split_walknrun, to_categorical, drop_activities, \
-    oversample, filter, scale, Xy_split, segment, calc_virtuals
+    oversample, filter, scale, Xy_split, segment, calc_virtuals, filter_activities, filter_subjects, resampl1d
 from split import split_train_test, split_train_val
 import sys
+import pickle
+import matplotlib.pyplot as plt
+
+# user = self.args.subjects[0]
+# for position in ['RF', 'LF', 'Waist', 'Wrist']:
+#     cols = ['accX_' + position, 'accY_' + position, 'accZ_' + position, 'time']
+#     event_cols = ['LF_HS', 'RF_HS', 'LF_TO', 'RF_TO', 'time']
+#     RF_5 = df[df['subject'] == user]
+#     RF_5_acc = RF_5[cols]
+#     RF_5_events = RF_5[event_cols]
+#     start = 5000
+#     end = 5400
+#
+#     plt.style.use("seaborn-dark")
+#     fig, ((ax1), (ax3)) = plt.subplots(2, 1)
+#     fig.set_size_inches(14.5, 10.5, forward=True)
+#     RF_5_acc.iloc[start:end].plot(x='time', lw=1, fontsize=5, ax=ax1, grid=True, linestyle='-')
+#     RF_5_events.iloc[start:end].plot(x='time', lw=1, fontsize=5, ax=ax3, grid=True, linestyle='-')
+#
+#     plt.savefig(str(user) + '_' + position + '_' + self.args.activities[0] + '.png')
+#     plt.close(fig)
+
+
+# user = self.args.subjects[0]
+# position = 'Wrist'
+#
+# cols = ['accX_' + position, 'accY_' + position, 'accZ_' + position, 'time']
+# event_cols = ['LF_HS', 'RF_HS', 'LF_TO', 'RF_TO', 'time']
+#
+# start = 5000
+# end = 5400
+#
+# plt.style.use("seaborn-dark")
+# fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+# fig.set_size_inches(14.5, 10.5, forward=True)
+#
+# RF_5 = df[df['subject'] == user]
+# RF_5_acc = RF_5[cols]
+# RF_5_events = RF_5[event_cols]
+# RF_5_acc.iloc[start:end].plot(x='time', lw=1, fontsize=5, ax=ax1, grid=True, linestyle='-')
+# RF_5_events.iloc[start:end].plot(x='time', lw=1, fontsize=5, ax=ax3, grid=True, linestyle='-')
+
+
+# RF_5 = df[df['subject'] == user]
+# RF_5_acc = RF_5[cols]
+# RF_5_events = RF_5[event_cols]
+# RF_5_acc.iloc[start:end].plot(x='time', lw=1, fontsize=5, ax=ax2, grid=True, linestyle='-')
+# RF_5_events.iloc[start:end].plot(x='time', lw=1, fontsize=5, ax=ax4, grid=True, linestyle='-')
+#
+# plt.savefig('Rescaling_' + str(user) + '_' + position + '_' + self.args.activities[0] + '.png')
 
 
 class Dataset:
@@ -55,6 +105,8 @@ class Dataset:
                 'Wrist': 3
             }
 
+            self.rec_fs = 128
+
         if regenerate:
             gen = builder()
             self.data = gen()
@@ -71,51 +123,66 @@ class Dataset:
 
         # subject filtering
         if self.args.subjects != 'all':
-            df = df[df['subject'].isin(self.args.subjects)]
+            df = filter_subjects(df, self.args.subjects)
 
         # activity filtering
         if self.args.split_walk_run:
-            df = split_walknrun(df, ['treadmill', 'indoor', 'outdoor'], drop=False)
+            df = split_walknrun(df, ['treadmill', 'indoor', 'outdoor'], drop=True)
 
         if self.args.activities != 'all':
-            df = df[df[self.args.activities].eq(1).any(axis=1)]
-            df, self.act_map = to_categorical(df)
-            df = drop_activities(df)
+            df = filter_activities(df, self.args.activities, self.args.split_walk_run)
 
-        else:
-            df, self.act_map = to_categorical(df)
-            df = drop_activities(df)
+        df, self.act_map = to_categorical(df)
+        df = drop_activities(df)
 
         # time filtering
-        df['time'] = df.pop("time")
+        df['time'] = df.pop("time") / self.rec_fs
         df = df.reset_index(drop=True)
 
-        # oversampling
-        if oversampling:
-            df = oversample(df, self.args.events, self.args.oversampling)
+        if self.args.sampling_rate != 128:
+            resamplers = self.args.acc_resampler, self.args.event_resampler
+            df = resampl1d(df, resamplers, self.rec_fs, self.args.sampling_rate)
 
         # calculate virtual signals
         if self.args.bf_preprocessing:
             df = calc_virtuals(df)
 
         # filtering
-        df = filter(df, self.args.filter, self.args.filter_window)
+        if self.args.filter is not None:
+            df = filter(df, self.args.filter, self.args.filter_window)
 
         # scaling
-        df = scale(df, self.args.scaler)
+        if self.args.scaler is not None:
+            df = scale(df, self.args.scaler)
 
         # train, val, test splitting
-        train, test = split_train_test(df, method=self.args.train_test_split, test_fraq=self.args.test_size)
+        train, test = split_train_test(df, method=self.args.train_test_split,
+                                       test_ratio=self.args.test_size)
+
+        # oversampling
+        if oversampling:
+            train = oversample(train, self.args.events, self.args.oversampling, self.args.sampling_window)
+
+        if self.args.train_val_split == 'loso':
+            train, val = split_train_test(train, method=self.args.train_val_split,
+                                          test_ratio=self.args.val_size)
+        else:
+            val = None
 
         # X, y splitting
         train = Xy_split(train, self.event_list.keys(), has_virtuals=self.args.bf_preprocessing)
         test = Xy_split(test, self.event_list.keys(), has_virtuals=self.args.bf_preprocessing)
+        if val is not None:
+            val = Xy_split(val, self.event_list.keys(), has_virtuals=self.args.bf_preprocessing)
 
         # segmenting
-        train = segment(train, self.args.length, self.args.stride, self.args.target)
-        test = segment(test, self.args.length, self.args.stride, self.args.target)
+        train = segment(train, self.args.length, self.args.stride, self.args.target, self.args.offset)
+        test = segment(test, self.args.length, self.args.stride, self.args.target, self.args.offset)
+        if val is not None:
+            val = segment(val, self.args.length, self.args.stride, self.args.target, self.args.offset)
 
-        train, val = split_train_val(train, method=self.args.train_val_split, val_fraq=self.args.val_size)
+        if val is None:
+            train, val = split_train_val(train, method=self.args.train_val_split, val_ratio=self.args.val_size)
 
         self.train_size = train[0].shape[0]
         self.val_size = val[0].shape[0]
@@ -129,6 +196,32 @@ class Dataset:
         else:
             return train, val, test
 
+    def save_data(self, path):
+        save_path = os.path.join(path, 'data.pkl')
+
+        my_data = {'train': self.train,
+                   'val': self.val,
+                   'test': self.test}
+        output = open(save_path, 'wb')
+        pickle.dump(my_data, output)
+
+        output.close()
+
+    def load_data(self, path):
+        load_path = os.path.join(path, 'data.pkl')
+
+        pkl_file = open(load_path, 'rb')
+        my_data = pickle.load(pkl_file)
+        self.train = my_data['train']
+        self.test = my_data['test']
+        self.val = my_data['val']
+
+        self.train_size = self.train[0].shape[0]
+        self.val_size = self.val[0].shape[0]
+        self.test_size = self.test[0].shape[0]
+
+        pkl_file.close()
+
     def init_transformers(self):
         self.xTransformer = temporal()
         self.input_shape = self.xTransformer.get_shape()
@@ -139,7 +232,7 @@ class Dataset:
         self.output_shape = self.yTranformer.get_shape()
         self.output_type = tf.float32
 
-        self.time_type = (tf.uint8, tf.uint8)
+        self.time_type = (tf.float32, tf.float32)
         self.time_shape = (self.input_time_shape, 3)
 
     def to_generator(self, is_train=False, is_val=False, is_test=False, time_info=False):
@@ -190,22 +283,35 @@ class Dataset:
 
     def batch_and_prefetch(self, train, val, test):
 
-        bnp_train = train.cache().shuffle(1000).repeat().batch(batch_size=self.args.batch_size).prefetch(
-            tf.data.AUTOTUNE)
+        bnp_train = (train.
+                     cache().
+                     shuffle(1000).
+                     repeat().
+                     batch(batch_size=self.args.batch_size).
+                     prefetch(tf.data.AUTOTUNE))
 
-        if val is None:
-            bnp_val = None
-        else:
-            bnp_val = val.cache().repeat().batch(batch_size=self.args.batch_size).prefetch(tf.data.AUTOTUNE)
+        bnp_val = (val.
+                   cache().
+                   repeat().
+                   batch(batch_size=self.args.batch_size).
+                   prefetch(tf.data.AUTOTUNE))
 
-        bnp_test = test.cache().repeat().batch(batch_size=self.args.batch_size).prefetch(tf.data.AUTOTUNE)
+        bnp_test = (test.
+                    cache().
+                    repeat().
+                    batch(batch_size=self.args.batch_size).
+                    prefetch(tf.data.AUTOTUNE))
 
         return bnp_train, bnp_val, bnp_test
 
-    def __call__(self, batch_prefetch=True, time_info=False):
+    def __call__(self, path, batch_prefetch=True, time_info=False):
 
-        self.init_data()
-        _, _, self.test_ = self.init_data(oversampling=False, inplace=False)
+        if self.args.load_data:
+            self.load_data(path)
+
+        else:
+            self.init_data()
+            self.save_data(path)
 
         self.init_transformers()
 

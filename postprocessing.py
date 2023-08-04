@@ -8,7 +8,7 @@ import seaborn as sns
 
 
 def get_yy_(data: Dataset, model: Model):
-    windows, events = data.test_
+    windows, events = data.test
 
     N = len(events)
     length = 0
@@ -18,18 +18,20 @@ def get_yy_(data: Dataset, model: Model):
     lengths = []
     inputs = []
 
+    threshold = 2
     for index, event in enumerate(events):
 
         X, _ = data.xTransformer(windows[index], training=False)
         inputs.append(X)
         y, info = data.yTranformer(event, time_info=True)
+        y, info = y[0], info[0]
         true_sequence.append(y)
         length += 1
 
         subject, activity, time = info
-        if index == N - 1 or events[index + 1, -1] - time > 1 or \
-                events[index + 1, -2] != activity or \
-                events[index + 1, -3] != subject:
+        if index == N - 1 or events[index + 1, 0, -1] - time > threshold or \
+                events[index + 1, 0, -2] != activity or \
+                events[index + 1, 0, -3] != subject:
 
             if length != 0:
                 outputs = model.predict(np.array(inputs), verbose=0)
@@ -123,6 +125,24 @@ def get_scores(tp, fp, fn):
     return precision, recall, f1_score
 
 
+def get_min_error(w, n):
+    w = w.to_numpy()
+    e = np.abs(n - np.argwhere(w).reshape((-1))).min() if len(np.argwhere(w)) else -1
+    return e
+
+
+def get_sum_error(w, n):
+    w = w.to_numpy()
+    e = np.abs(n - np.argwhere(w).reshape((-1))).sum() if len(np.argwhere(w)) else -1
+    return e
+
+
+def get_count_error(w, n):
+    w = w.to_numpy()
+    e = np.abs(n - np.argwhere(w).reshape((-1))).shape[0] if len(np.argwhere(w)) else -1
+    return e
+
+
 def get_time_error(x: pd.DataFrame, event_name, n=1, how='min'):
     pred_mask = x['pred ' + event_name] == 1
     true_mask = x['true ' + event_name] == 1
@@ -131,10 +151,8 @@ def get_time_error(x: pd.DataFrame, event_name, n=1, how='min'):
     time_error = 0
 
     if how == 'all':
-        dists = true_mask.rolling(2 * n + 1, center=True, min_periods=1). \
-            apply(lambda w: np.abs(n - np.argwhere(w).reshape((-1))).sum() if len(np.argwhere(w)) else -1)
-        counts = true_mask.rolling(2 * n + 1, center=True, min_periods=1). \
-            apply(lambda w: np.abs(n - np.argwhere(w).reshape((-1))).shape[0] if len(np.argwhere(w)) else -1)
+        dists = true_mask.rolling(2 * n + 1, center=True, min_periods=1).apply(lambda w: get_sum_error(w, n))
+        counts = true_mask.rolling(2 * n + 1, center=True, min_periods=1).apply(lambda w: get_count_error(w, n))
 
         tp_dists = dists[true_positives]
         tp_counts = counts[true_positives]
@@ -142,8 +160,7 @@ def get_time_error(x: pd.DataFrame, event_name, n=1, how='min'):
         time_error = tp_dists.sum() / tp_counts.sum()
 
     if how == 'min':
-        dists = true_mask.rolling(2 * n + 1, center=True, min_periods=1). \
-            apply(lambda w: np.abs(n - np.argwhere(w).reshape((-1))).min() if len(np.argwhere(w)) else -1)
+        dists = true_mask.rolling(2 * n + 1, center=True, min_periods=1).apply(lambda w: get_min_error(w, n))
         tp_dists = dists[true_positives]
 
         time_error = tp_dists.mean()

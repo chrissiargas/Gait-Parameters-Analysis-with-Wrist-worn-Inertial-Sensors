@@ -63,6 +63,7 @@ class Parser:
         self.activities = args.train_args['activities']
         self.split_walk_run = args.train_args['split_walk_run']
         self.oversampling = args.train_args['oversampling']
+        self.sampling_window = args.train_args['sampling_window']
         self.filter = args.train_args['filter']
         self.filter_window = args.train_args['filter_window']
         self.scaler = args.train_args['scaler']
@@ -79,7 +80,12 @@ class Parser:
         self.val_tables = args.train_args['val_tables']
         self.test_scores = args.train_args['test_scores']
         self.test_tables = args.train_args['test_tables']
-        self.load = args.train_args['load']
+        self.load_model = args.train_args['load_model']
         self.bf_preprocessing = args.train_args['before_preprocessing']
+        self.acc_resampler = args.train_args['acc_resampler']
+        self.event_resampler = args.train_args['event_resampler']
+        self.load_data = args.train_args['load_data']
+        self.offset = args.train_args['offset']
+        self.average = args.train_args['average']
 
         return
