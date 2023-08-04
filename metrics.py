@@ -77,6 +77,7 @@ class Metrics(Callback):
             self.multi_label = False
 
         self.n_labels = len(self.args.events)
+        self.length = self.args.length if self.args.target == 'full' else 1
 
         if self.average is None:
             self.average = None if self.multi_label else 'macro'
@@ -110,7 +111,7 @@ class Metrics(Callback):
 
         print(out)
 
-        if 'classification_report' in self.in_scores and self.average is not 'binary':
+        if 'classification_report' in self.in_scores and self.average != 'binary':
             print(classification_report(true, pred, target_names=self.label_names))
 
     def get_tables(self, true, pred):
@@ -124,7 +125,7 @@ class Metrics(Callback):
 
                 if len(self.label_names):
                     axes = [axes]
-                    
+
                 for i, (cm, label_name, ax) in enumerate(zip(self.tables['confusion'], self.label_names, axes)):
                     cm_df = pd.DataFrame(cm,
                                          index=['N', 'Y'],
@@ -163,22 +164,28 @@ class Metrics(Callback):
         step = 0
 
         if self.multi_label:
-            pred = np.zeros((total_size, self.n_labels), dtype=np.int8)
-            true = np.zeros((total_size, self.n_labels), dtype=np.int8)
+            pred = np.zeros((total_size, self.length, self.n_labels), dtype=np.int8)
+            true = np.zeros((total_size, self.length, self.n_labels), dtype=np.int8)
 
         elif self.multi_class:
-            pred = np.zeros(total_size)
-            true = np.zeros(total_size)
+            pred = np.zeros((total_size, self.length))
+            true = np.zeros((total_size, self.length))
 
         for batch in self.set.take(self.steps):
             X = batch[0]
             y = batch[1]
 
             if self.multi_label:
-                pred[step * self.batch_size: (step + 1) * self.batch_size] = np.where(
+                batch_pred = np.where(
                     np.asarray(self.model.predict(X, verbose=self.verbose)) > 0.5, 1, 0
                 )
 
+                if self.length != 1:
+                    batch_pred = np.transpose(batch_pred.squeeze(), [1, 2, 0])
+                else:
+                    batch_pred = batch_pred[..., np.newaxis]
+
+                pred[step * self.batch_size: (step + 1) * self.batch_size] = batch_pred
                 true[step * self.batch_size: (step + 1) * self.batch_size] = y
 
             elif self.multi_class:
@@ -189,6 +196,10 @@ class Metrics(Callback):
                 true[step * self.batch_size: (step + 1) * self.batch_size] = np.argmax(y, axis=1)
 
             step += 1
+
+        if self.multi_label and self.length != 1:
+            true = true.reshape((total_size * self.length, self.n_labels))
+            pred = pred.reshape((total_size * self.length, self.n_labels))
 
         true = true.squeeze()
         pred = pred.squeeze()

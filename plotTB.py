@@ -1,5 +1,5 @@
 from tensorboard import program
-model = 'Tan'
+model = 'Romi'
 tracking_address = './logs' + '/' + model + '_model_tb'  # the path of your log file. (accEncoderTb, fullModelTb)
 
 if __name__ == "__main__":

@@ -4,29 +4,33 @@ data_args:
 
 train_args:
   subjects:
-  - 12
-  activities: # [ treadmill_slope_walk, treadmill_walk, treadmill_run, treadmill_walknrun, indoor_..., outdoor_...] + all
-  - outdoor_walk
+  - 13
+  activities:     # [ treadmill_slope_walk, treadmill_walk, treadmill_run, treadmill_walknrun, indoor_..., outdoor_...] + all
+  - outdoor_walknrun
   split_walk_run: true
 
   events:
-  - LF_HS
-  oversampling: 3 # = 1 -> no oversampling
-  target: future # Past, Present, Future
+  - RF_TO
+  oversampling: simple # = 1 -> no oversampling
+  sampling_window: 3
+  target: future # start, end, past, present, future, full
+  offset: 1
   class_mode: multi_label # multi_class, multi_label
 
-  scaler: MinMax # MinMaxScaler, StandardScaler
+  scaler: MinMax   # MinMaxScaler, StandardScaler
   filter: median
   filter_window: 3
 
-  train_test_split: middle # start, middle, end, loso, stratified
+  train_test_split: start  # start, middle, end, loso, stratified
   test_size: 30 # %
   train_val_split: random # start, middle, end, loso, stratified
   val_size: 33 # %
 
-  length: 3 # seconds
-  stride: 1 # seconds
-  sampling_rate: 128 # Hz
+  length: 3   # seconds
+  stride: 1   # seconds
+  sampling_rate: 128  # Hz
+  acc_resampler: interp_linear
+  event_resampler: preserve
 
   signals:
   - Acc_x
@@ -38,38 +42,30 @@ train_args:
   - Acc_xz
   before_preprocessing: true
   positions:
-  - LF
   - RF
-  augmentations:
+  augmentations: []
 
   batch_size: 20
   learning_rate: 0.001
   epochs: 50
 
   model: Tan
-  load: no
+  load_model: false
+  load_data: false
 
   val_scores: # [f1, precision, recall, accuracy, balanced_accuracy, classification_report, time_error]
   - f1
   - precision
   - recall
   - accuracy
-
   test_scores:
   - f1
   - precision
   - recall
   - accuracy
-  - classification_report
+  average: binary
 
   val_tables: # [confusion]
   - confusion
-
   test_tables:
   - confusion
-
-
-
-
-
-

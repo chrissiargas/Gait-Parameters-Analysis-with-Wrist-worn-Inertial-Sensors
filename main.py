@@ -1,4 +1,4 @@
-from experiments import Tan
+from experiments import Tan, Romi
 import warnings
 import os
 import time
@@ -11,6 +11,8 @@ gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 
+implementations = ['Tan', 'Romi']
+
 
 def main():
     experiment = 'Tan'
@@ -18,6 +20,9 @@ def main():
 
     if experiment == 'Tan':
         Tan(archive)
+
+    elif experiment == 'Romi':
+        Romi(archive)
 
 
 if __name__ == '__main__':
